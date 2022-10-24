@@ -3,10 +3,6 @@ package org.butterbrot.floe.distribat;
 import android.Manifest;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -23,7 +19,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import uk.me.berndporr.kiss_fft.KISSFastFourierTransformer;
@@ -34,8 +30,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -43,11 +37,21 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String AUDIO_RECORDER_FOLDER = "AudioRecorder";
     private static final String AUDIO_RECORDER_EXT_FILE = ".wav";
-    private static final String AUDIO_RECORDER_TEMP_FILE = "record_temp.raw";
+    private static final String AUDIO_RECORDER_TEMP_FILE = "record_temp";
+    private static final String AUDIO_RECORDER_TEMP_FILE_EXT = ".raw";
     private static final int RECORDER_BPP = 16;
 
+    // Are recorded sounds positive or negative samples?
     private static String isPositive;
-    private static final int numberOfIterations = 1;
+
+    // number of buffers recorded into one wav file. If you want longer audios, increase this number
+    private static final int NUMBER_OF_BUFFERS = 1;
+
+    // Number of samples recorded one batch - records all of them by clicking the play button once
+    public static final int NUMBER_OF_SAMPLES = 10;
+
+    // Helping counter - for creating temp files
+    public static int currentSample = 0;
 
     // frequency resolution is ~  5.86 Hz with 8192
     // frequency resolution is ~ 11.71 Hz with 4096
@@ -66,7 +70,6 @@ public class MainActivity extends AppCompatActivity {
     int[] pings;
     public int count = 0;
     public int nextfreq = 0;
-    public int eventcount = 0;
 
     short[] rawbuffer;
     double[] input;
@@ -74,23 +77,7 @@ public class MainActivity extends AppCompatActivity {
     double[] hann;
     double[] scratch;
     double[] masterbuf;
-    double[] noisefloor;
     boolean doRecord = false;
-    int master_offset = 0;
-
-    // visualization stuff
-    public static int canvas_size = 512;
-    ImageView imageView;
-    Bitmap bitmap;
-    Canvas canvas;
-    Paint paint;
-    int clearColor = Color.BLACK;
-
-
-    // https://stackoverflow.com/questions/5774104/android-audio-fft-to-retrieve-specific-frequency-magnitude-using-audiorecord
-    private double ComputeFrequency(int arrayIndex) {
-        return ((1.0 * SAMPLE_RATE) / (1.0 * fftwindowsize)) * arrayIndex;
-    }
 
     private int ComputeIndex(int frequency) {
         return (int)((((double)fftwindowsize) / ((double)SAMPLE_RATE)) * (double)frequency);
@@ -126,11 +113,9 @@ public class MainActivity extends AppCompatActivity {
 
     // FIXME: needs to be dynamic for each frequency
     double freq_threshold = 100.0;
-    // w moving average, variance
-    double[] wma = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-    double[] wmv = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
 
     // detect "interesting" frequencies in FFT result
+    // TODO: Do we need this?!?
     private int detect_freq(double[] data) {
         // first run -> convert frequencies to FFT bins
         if (freq_offsets[0] > 10000)
@@ -156,17 +141,17 @@ public class MainActivity extends AppCompatActivity {
         //double maxval = data[basefreq];
         if (maxval < freq_threshold) return 0;
 
-        String msg = "values: ";
+        StringBuilder msg = new StringBuilder("values: ");
 
         for (int i = 0; i <= 2 * searchwindow; i++) {
             template[i] = 0.9 * template[i] + 0.1 * (data[basefreq-searchwindow+i] / maxval);
-            msg += (int)(100 * data[basefreq - searchwindow + i] / maxval)+",";
+            msg.append((int) (100 * data[basefreq - searchwindow + i] / maxval)).append(",");
             data[basefreq - searchwindow + i] -= maxval * template[i];
         }
-        Log.d(TAG,msg);
-        msg = "template: ";
-        for (double t: template) msg+=(int)(t*100)+",";
-        Log.d(TAG,msg);
+        Log.d(TAG, msg.toString());
+        msg = new StringBuilder("template: ");
+        for (double t: template) msg.append((int) (t * 100)).append(",");
+        Log.d(TAG, msg.toString());
 
         // find weight distribution of peak
         double balance = 0.0;
@@ -178,6 +163,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // Requesting permission to RECORD_AUDIO (from https://developer.android.com/guide/topics/media/mediarecorder#java)
+    // Added permission for saving files into a local memory
     private boolean permissionToRecordAccepted = false;
     private final String[] permissions = {Manifest.permission.RECORD_AUDIO,
             Manifest.permission.WRITE_EXTERNAL_STORAGE};
@@ -199,7 +185,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
         requestPermissions(permissions, REQUEST);
@@ -230,14 +216,24 @@ public class MainActivity extends AppCompatActivity {
 
         masterbuf = new double[SAMPLE_RATE]; // room for one second of data
 
-        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
+        FloatingActionButton fab = findViewById(R.id.fab);
+        final TextView textView = findViewById(R.id.statusText);
+
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 if (doRecord) {
                     doRecord = false;
-                    ((FloatingActionButton)view).setImageResource(android.R.drawable.ic_media_play);
-                    showYesNoDialog();
+                    String status = "Recording...\n" + (currentSample + 1) + "/" + NUMBER_OF_SAMPLES;
+                    textView.setText(status);
+
+                    // Ask user for target value (0 or 1) only once, when the last sample is recorded.
+                    // All recorded sounds from the same batch will have the same target value.
+                    if (currentSample == NUMBER_OF_SAMPLES - 1) {
+                        ((FloatingActionButton) view).setImageResource(android.R.drawable.ic_media_play);
+                        textView.setText(R.string.click_play_to_start_recording);
+                        showYesNoDialog();
+                    }
                 }
                 else {
                     ra = (RecordAudioTask) new RecordAudioTask().execute();
@@ -245,14 +241,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-/*
-        imageView = (ImageView) this.findViewById(R.id.imageView);
-        bitmap = Bitmap.createBitmap(canvas_size, canvas_size, Bitmap.Config.ARGB_8888);
-        canvas = new Canvas(bitmap);
-        paint = new Paint();
-        paint.setColor(Color.GREEN);
-        imageView.setImageBitmap(bitmap);
-*/
     }
 
     @Override
@@ -281,145 +269,103 @@ public class MainActivity extends AppCompatActivity {
     private class RecordAudioTask extends AsyncTask<Void, double[], Void> {
 
         @Override protected Void doInBackground(Void... params) {
-            try {
-
-                audioRecord.startRecording();
-                Log.d(TAG,"start recording");
-                doRecord = true;
-
-                // added
-                byte[] raw_buffer = new byte[fftwindowsize];
-                String filename = getTempFileName();
-                FileOutputStream os = null;
-
+            while (currentSample < NUMBER_OF_SAMPLES) {
                 try {
-                    os = new FileOutputStream(filename);
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                }
-                //added
+                    audioRecord.startRecording();
+                    Log.d(TAG,"start recording");
+                    doRecord = true;
+
+                    // added
+                    byte[] raw_buffer = new byte[fftwindowsize];
+                    String filename = getTempFileName(currentSample);
+                    FileOutputStream os = null;
+
+                    try {
+                        os = new FileOutputStream(filename);
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
+                    }
+                    //added
 
 
-                int counter = 0;
-                while (doRecord) {
+                    int counter = 0;
+                    while (doRecord) {
 
-                    if (counter == numberOfIterations) {
-                        runOnUiThread(new Runnable()
-                        {
-                            public void run()
+                        // Checks if there is enough data in output stream. If yes - stop recording
+                        if (counter == NUMBER_OF_BUFFERS) {
+                            runOnUiThread(new Runnable()
                             {
-                                FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-                                fab.performClick();
-                            }
-                        });
-                    }
-                    counter++;
+                                public void run()
+                                {
+                                    FloatingActionButton fab = findViewById(R.id.fab);
+                                    fab.performClick();
+                                }
+                            });
+                        }
+                        counter++;
 
-                    // FIXME: ugly hack, when exactly should playback happen?
-                    if (count++ % 3 == 0) {
-                        nextfreq = (int)(Math.random()*pings.length);
-                        soundPool.play(pings[nextfreq],1.0f,1.0f,0,0,1.0f );
-                    }
+                        // FIXME: ugly hack, when exactly should playback happen?
+                        if (count++ % 3 == 0) {
+                            nextfreq = (int)(Math.random()*pings.length);
+                            soundPool.play(pings[nextfreq],1.0f,1.0f,0,0,1.0f );
+                        }
 
-                    // added ->
-                    if (os != null) {
-                        int read = audioRecord.read(raw_buffer, 0, raw_buffer.length, AudioRecord.READ_BLOCKING); // ???
+                        // Copy data from buffer to output stream (== temp file)
+                        if (os != null) {
+                            int read = audioRecord.read(raw_buffer, 0, raw_buffer.length, AudioRecord.READ_BLOCKING); // ???
 
-                        if (read != AudioRecord.ERROR_INVALID_OPERATION) {
-                            try {
-                                os.write(raw_buffer);
-                            } catch (IOException e) {
-                                e.printStackTrace();
+                            if (read != AudioRecord.ERROR_INVALID_OPERATION) {
+                                try {
+                                    os.write(raw_buffer);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
                             }
                         }
+
+                        long time1 = System.currentTimeMillis();
+                        double[] tmpb = prev; prev = input; input = tmpb;
+                        // FIXME: magic scale factor 100.0
+                        for (int i = 0; i < input.length; i++) input[i] = 100.0 * (raw_buffer[i] / (double)Short.MAX_VALUE);
+                        double[] output = fft_with_hann(input,0);
+
+                        // TODO: Save the output!
+
+                        long time2 = System.currentTimeMillis();
+
+                        Log.v(TAG,"timediff = ms: "+(time2-time1));
+
+                        // TODO: Classification goes here!
                     }
 
-
-                    //added <-
-
-
-                    long time1 = System.currentTimeMillis();
-                    double[] tmpb = prev; prev = input; input = tmpb;
-                    // FIXME: magic scale factor 100.0
-                    for (int i = 0; i < input.length; i++) input[i] = 100.0 * (raw_buffer[i] / (double)Short.MAX_VALUE);
-                    double[] output = fft_with_hann(input,0);
-                    long time2 = System.currentTimeMillis();
-
-                    Log.v(TAG,"timediff = ms: "+(time2-time1));
-
-
-/*
-
-                    // replace this part!!
-
-                    int balance = detect_freq(output);
-                    if (balance == 0) continue;
-
-                    publishProgress(output);
-
-                    double delta = balance - wma[nextfreq];
-                    double alpha = 0.1;
-                    wma[nextfreq] = wma[nextfreq] + alpha * delta;
-                    wmv[nextfreq] = (1.0-alpha) * (wmv[nextfreq] + alpha*delta*delta);
-
-                    String msg = "balance moving average: ";
-                    for (double w: wma) msg+=(int)w+" ";
-                    Log.d(TAG,msg);
-
-                    msg = "balance moving stddev: ";
-                    for (double v: wmv) msg+=(int)Math.sqrt(v)+" ";
-                    Log.d(TAG,msg);
-
-                    if (delta > 1.5*Math.sqrt(wmv[nextfreq])) {
-                        eventcount += 1;
-                    } else eventcount = 0;
-
-                    if (eventcount >= 2) {
-                        Log.d(TAG, "incoming!");
-                        clearColor = Color.RED;
+                    // Closing the output stream
+                    try {
+                        assert os != null;
+                        os.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
-*/
-                    // do tu
-                }
 
-                try {
-                    assert os != null;
-                    os.close();
-                } catch (IOException e) {
+                    audioRecord.stop();
+
+                    Log.d(TAG,"stop recording");
+
+                } catch(Exception e) {
                     e.printStackTrace();
                 }
 
-                audioRecord.stop();
-
-                // TODO: DODANO
-
-                Log.d(TAG,"stop recording");
-
-            } catch(Exception e) {
-                e.printStackTrace();
+                currentSample++;
             }
+
+            currentSample = 0;
+
             return null;
-        }
 
-        /*
-        // https://stackoverflow.com/questions/5511250/capturing-sound-for-analysis-and-visualizing-frequencies-in-android
-        @Override protected void onProgressUpdate(double[]... data) {
-            canvas.drawColor(clearColor);
-            clearColor = Color.BLACK;
-            for (int x = 0; x < canvas_size; x++) {
-                // visualize only the uppermost part of the spectrum
-                int startbin = (data[0].length/2) - canvas_size;
-                int y1 = (int) (canvas_size - (data[0][startbin+x] * 10));
-                int y2 = canvas_size;
-                canvas.drawLine(x, y1, x, y2, paint);
-            }
-            imageView.invalidate();
         }
-        */
     }
 
+    // Dialog asks the user if the recorded sounds were positive or negative samples
     private void showYesNoDialog() {
-
         DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
@@ -432,8 +378,10 @@ public class MainActivity extends AppCompatActivity {
                         isPositive = "_0";
                         break;
                 }
-                copyWaveFile(getTempFileName(), getFileName());
-                deleteTempFile();
+                for (int i = 0; i < NUMBER_OF_SAMPLES; i++) {
+                    copyWaveFile(getTempFileName(i), getFileName());
+                }
+                deleteTempFiles();
             }
         };
 
@@ -444,36 +392,47 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private String getTempFileName() {
+    // Makes #NUMBER_OF_SAMPLES temp files which will be copied to wav files later.
+    private String getTempFileName(int currSample) {
         String filepath = Environment.getExternalStorageDirectory().getPath();
         File file = new File(filepath, AUDIO_RECORDER_FOLDER);
 
         if (!file.exists())
-            file.mkdirs();
+            if (!file.mkdirs())
+                Log.v(TAG, "An Error has Occurred!");
 
-        File tempfile = new File(filepath, AUDIO_RECORDER_TEMP_FILE);
+        File temp_file = new File(filepath, AUDIO_RECORDER_TEMP_FILE + currSample + AUDIO_RECORDER_TEMP_FILE_EXT);
 
-        if (tempfile.exists())
-            tempfile.delete();
+        if (temp_file.exists())
+            if (!temp_file.delete())
+                Log.v(TAG, "An Error Has Occurred!");
 
-        return (file.getAbsolutePath() + "/" + AUDIO_RECORDER_TEMP_FILE);
+        return (file.getAbsolutePath() + "/" + AUDIO_RECORDER_TEMP_FILE + currSample + AUDIO_RECORDER_TEMP_FILE_EXT);
     }
 
+    // Creates one unique file name for new recorded sample
+    // Every file name ends with underscore followed by number 0 or 1
+    // This number indicates if the sample is positive or negative
     private String getFileName() {
         String filepath = Environment.getExternalStorageDirectory().getPath();
         File file = new File(filepath, AUDIO_RECORDER_FOLDER);
 
         if(!file.exists())
-            file.mkdirs();
+            if (!file.mkdirs())
+                Log.v(TAG, "An Error Has Occurred!");
 
         return(file.getAbsolutePath() + "/" + System.currentTimeMillis() + isPositive + AUDIO_RECORDER_EXT_FILE);
     }
 
-    private void deleteTempFile() {
-        File file = new File(getTempFileName());
-        file.delete();
+    private void deleteTempFiles() {
+        for (int i = 0; i < NUMBER_OF_SAMPLES; i++) {
+            File file = new File(getTempFileName(i));
+            if (!file.delete())
+                Log.v(TAG, "An Error Has Occurred!");
+        }
     }
 
+    // Copies one temp file to a one .wav file
     private void copyWaveFile(String inFilename, String outFilename) {
         FileInputStream in;
         FileOutputStream out;
@@ -483,7 +442,7 @@ public class MainActivity extends AppCompatActivity {
         long totalAudioLen, totalDataLen;
         long longSampleRate = SAMPLE_RATE;
         int channels = 2;
-        long byteRate = RECORDER_BPP * SAMPLE_RATE * channels / 8;
+        long byteRate = (long) RECORDER_BPP * SAMPLE_RATE * channels / 8;
 
         byte[] data = new byte[bufferSize];
 
@@ -509,6 +468,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Writes wave header at the start of the new wave file
     private void WriteWaveFileHeader(FileOutputStream out, long totalAudioLen, long totalDataLen, long longSampleRate, int channels, long byteRate) throws IOException {
         byte[] header = new byte[44];
 
