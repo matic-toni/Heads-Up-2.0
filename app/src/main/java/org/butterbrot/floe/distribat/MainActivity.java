@@ -1,8 +1,10 @@
 package org.butterbrot.floe.distribat;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -15,10 +17,12 @@ import android.support.design.widget.FloatingActionButton;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.InputType;
 import android.util.Log;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -30,6 +34,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -48,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int NUMBER_OF_BUFFERS = 1;
 
     // Number of samples recorded one batch - records all of them by clicking the play button once
-    public static final int NUMBER_OF_SAMPLES = 10;
+    public static int samplesNumber;
 
     // Helping counter - for creating temp files
     public static int currentSample = 0;
@@ -190,6 +195,8 @@ public class MainActivity extends AppCompatActivity {
 
         requestPermissions(permissions, REQUEST);
 
+        showNumberDialog();
+
         // TODO: setAudioAttributes()?
         soundPool = new SoundPool.Builder().build();
         pings = new int[6];
@@ -224,12 +231,12 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View view) {
                 if (doRecord) {
                     doRecord = false;
-                    String status = "Recording...\n" + (currentSample + 1) + "/" + NUMBER_OF_SAMPLES;
+                    String status = "Recording...\n" + (currentSample + 1) + "/" + samplesNumber;
                     textView.setText(status);
 
                     // Ask user for target value (0 or 1) only once, when the last sample is recorded.
                     // All recorded sounds from the same batch will have the same target value.
-                    if (currentSample == NUMBER_OF_SAMPLES - 1) {
+                    if (currentSample == samplesNumber - 1) {
                         ((FloatingActionButton) view).setImageResource(android.R.drawable.ic_media_play);
                         textView.setText(R.string.click_play_to_start_recording);
                         showYesNoDialog();
@@ -269,7 +276,7 @@ public class MainActivity extends AppCompatActivity {
     private class RecordAudioTask extends AsyncTask<Void, double[], Void> {
 
         @Override protected Void doInBackground(Void... params) {
-            while (currentSample < NUMBER_OF_SAMPLES) {
+            while (currentSample < samplesNumber) {
                 try {
                     audioRecord.startRecording();
                     Log.d(TAG,"start recording");
@@ -278,15 +285,16 @@ public class MainActivity extends AppCompatActivity {
                     // added
                     byte[] raw_buffer = new byte[fftwindowsize];
                     String filename = getTempFileName(currentSample);
+                    String filename_han = getTempFileName(currentSample + samplesNumber);
                     FileOutputStream os = null;
+                    FileOutputStream os_han = null;
 
                     try {
                         os = new FileOutputStream(filename);
+                        os_han = new FileOutputStream(filename_han);
                     } catch (FileNotFoundException e) {
                         e.printStackTrace();
                     }
-                    //added
-
 
                     int counter = 0;
                     while (doRecord) {
@@ -331,6 +339,25 @@ public class MainActivity extends AppCompatActivity {
 
                         // TODO: Save the output!
 
+                        // added - converting doubles to bytes
+                        // ! this wav files will be 8 times larger, since it is using doubles
+                        // instead of bytes
+                        ByteBuffer bb = ByteBuffer.allocate(output.length * 8);
+                        for(double o : output) {
+                            bb.putDouble(o);
+                        }
+
+                        byte[] output_bytes = bb.array();
+
+
+                        if (os_han != null) {
+                            try {
+                                os_han.write(output_bytes);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
                         long time2 = System.currentTimeMillis();
 
                         Log.v(TAG,"timediff = ms: "+(time2-time1));
@@ -342,6 +369,8 @@ public class MainActivity extends AppCompatActivity {
                     try {
                         assert os != null;
                         os.close();
+                        assert os_han != null;
+                        os_han.close();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -364,6 +393,47 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // SuppressLint - Why?
+    @SuppressLint("RestrictedApi")
+    private void showNumberDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("How many samples do you want to record?");
+
+        // Set up the input
+        final EditText input = new EditText(this);
+
+        // Specify the type of input expected; this, for example, sets the input as a password, and will mask the text
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setRawInputType(Configuration.KEYBOARD_12KEY);
+        builder.setView(input, 50, 0, 50, 0);
+
+        // Set up the buttons
+        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                samplesNumber = Integer.parseInt(input.getText().toString());
+            }
+        });
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.cancel();
+            }
+        });
+
+        builder.show();
+
+    }
+
+    private void saveFiles() {
+        for (int i = 0; i < samplesNumber; i++) {
+            copyWaveFile(getTempFileName(i), getFileName("_0"));
+        }
+        for (int i = 0; i < samplesNumber; i++) {
+            copyWaveFile(getTempFileName(i + samplesNumber), getFileName("_1"));
+        }
+    }
+
     // Dialog asks the user if the recorded sounds were positive or negative samples
     private void showYesNoDialog() {
         DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
@@ -372,22 +442,29 @@ public class MainActivity extends AppCompatActivity {
                 switch (which) {
                     case DialogInterface.BUTTON_POSITIVE:
                         isPositive = "_1";
+                        saveFiles();
                         break;
 
                     case DialogInterface.BUTTON_NEGATIVE:
                         isPositive = "_0";
+                        saveFiles();
+                        break;
+
+                    case DialogInterface.BUTTON_NEUTRAL:
+                        dialog.dismiss();
                         break;
                 }
-                for (int i = 0; i < NUMBER_OF_SAMPLES; i++) {
-                    copyWaveFile(getTempFileName(i), getFileName());
-                }
+
                 deleteTempFiles();
+
+                showNumberDialog();
             }
         };
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setMessage("Did you bump into a wall?!").setPositiveButton("Yes", dialogClickListener)
-                .setNegativeButton("No", dialogClickListener).show();
+                .setNegativeButton("No", dialogClickListener)
+                .setNeutralButton("Cancel", dialogClickListener).show();
 
 
     }
@@ -413,7 +490,7 @@ public class MainActivity extends AppCompatActivity {
     // Creates one unique file name for new recorded sample
     // Every file name ends with underscore followed by number 0 or 1
     // This number indicates if the sample is positive or negative
-    private String getFileName() {
+    private String getFileName(String isHan) {
         String filepath = Environment.getExternalStorageDirectory().getPath();
         File file = new File(filepath, AUDIO_RECORDER_FOLDER);
 
@@ -421,11 +498,11 @@ public class MainActivity extends AppCompatActivity {
             if (!file.mkdirs())
                 Log.v(TAG, "An Error Has Occurred!");
 
-        return(file.getAbsolutePath() + "/" + System.currentTimeMillis() + isPositive + AUDIO_RECORDER_EXT_FILE);
+        return(file.getAbsolutePath() + "/" + System.currentTimeMillis() + isHan + isPositive + AUDIO_RECORDER_EXT_FILE);
     }
 
     private void deleteTempFiles() {
-        for (int i = 0; i < NUMBER_OF_SAMPLES; i++) {
+        for (int i = 0; i < 2 * samplesNumber; i++) {
             File file = new File(getTempFileName(i));
             if (!file.delete())
                 Log.v(TAG, "An Error Has Occurred!");
