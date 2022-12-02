@@ -1,8 +1,6 @@
 package org.butterbrot.floe.distribat;
 
 import android.Manifest;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioFormat;
@@ -10,7 +8,6 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.media.SoundPool;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.support.annotation.NonNull;
@@ -22,7 +19,6 @@ import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.View;
 import android.view.Menu;
-import android.view.MenuItem;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -31,7 +27,6 @@ import org.apache.commons.math3.complex.Complex;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -226,7 +221,7 @@ public class MainActivity extends AppCompatActivity {
                     doRecord = false;
                     ra = (RecordAudioTask) new RecordAudioTask().execute();
                     ((FloatingActionButton)view).setImageResource(android.R.drawable.ic_media_play);
-                    String status = "Recording sopped!\nYou will no longer receive notifications!";
+                    String status = "Recording sopped!\n\nYou will no longer receive notifications!";
                     textView.setText(status);
                 }
                 else {
@@ -234,7 +229,8 @@ public class MainActivity extends AppCompatActivity {
                     doRecord = true;
                     ra = (RecordAudioTask) new RecordAudioTask().execute();
                     ((FloatingActionButton)view).setImageResource(android.R.drawable.ic_media_pause);
-                    String status = "Recording started...\nYou can close the app now!";
+                    String status = "Recording started...\n\nYou can close the app now!";
+                    // TODO: Ja bi ode možda crta te spektograme ako su baza, da nije prazan ekran.
                     textView.setText(status);
                 }
             }
@@ -352,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
 
                                 builder.setContentTitle("STOP!!!")
                                         .setContentText("The wall is in front of you!")
-                                        .setSmallIcon(R.drawable.logo)
+                                        .setSmallIcon(R.drawable.app_logo)
                                         .setAutoCancel(true);
 
                                 NotificationManagerCompat manager = NotificationManagerCompat.from(MainActivity.this);
@@ -367,7 +363,6 @@ public class MainActivity extends AppCompatActivity {
                                     assert man != null;
                                     man.createNotificationChannel(channel);
                                 }
-                                */
 
                                 String status = "Watch Your Head!";
                                 textView.setText(status);
@@ -377,6 +372,7 @@ public class MainActivity extends AppCompatActivity {
                                 textView.setText(status);
                                 textView.setTextColor(Color.GREEN);
 
+                                */
 
                             }
 
