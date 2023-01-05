@@ -4,7 +4,7 @@ android {
     compileSdkVersion 27
     defaultConfig {
         applicationId "org.butterbrot.floe.distribat"
-        minSdkVersion 23
+        minSdkVersion 26
         targetSdkVersion 27
         versionCode 1
         versionName "1.0"
@@ -28,4 +28,5 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     implementation project(':jnifft-release')
     implementation group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
+
 }

@@ -2,7 +2,6 @@ package org.butterbrot.floe.distribat;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -11,6 +10,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.support.annotation.NonNull;
+import android.support.constraint.ConstraintLayout;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
@@ -48,9 +48,9 @@ public class MainActivity extends AppCompatActivity {
     // frequency resolution is ~ 11.71 Hz with 4096
     // frequency resolution is ~ 46.87 Hz with 1024
     // processing takes ~ 15 ms
-    public static int SAMPLE_RATE = 48000;
-    public static int fftwindowsize = 4096;
-    public static int searchwindow = 25;
+    public static final int SAMPLE_RATE = 48000;
+    public static final int FFT_WINDOW_SIZE = 4096;
+    public static final int SEARCH_WINDOW = 25;
 
     public RecordAudioTask ra;
     public KISSFastFourierTransformer fft;
@@ -60,25 +60,25 @@ public class MainActivity extends AppCompatActivity {
     SoundPool soundPool;
     int[] pings;
     public int count = 0;
-    public int nextfreq = 0;
+    public int nextFreq = 0;
 
-    short[] rawbuffer;
+    short[] rawBuffer;
     double[] input;
     double[] prev;
     double[] hann;
     double[] scratch;
-    double[] masterbuf;
+    double[] masterBuf;
 
     boolean stopped = false;
     boolean doRecord = false;
 
     private int ComputeIndex(int frequency) {
-        return (int)((((double)fftwindowsize) / ((double)SAMPLE_RATE)) * (double)frequency);
+        return (int)((((double) FFT_WINDOW_SIZE) / ((double)SAMPLE_RATE)) * (double)frequency);
     }
 
     // Hann window is generally considered the best all-purpose window function, see also ...
     // https://dsp.stackexchange.com/questions/22175/how-should-i-select-window-size-and-overlap
-    private double[] hann_window(int size) {
+    private double[] hannWindow(int size) {
         double[] hann = new double[size];
         for (int i = 0; i < size; i++) {
             hann[i] = 0.5 * (1.0 - Math.cos(2.0*i*Math.PI/(double)(size-1)));
@@ -86,14 +86,14 @@ public class MainActivity extends AppCompatActivity {
         return hann;
     }
 
-    double[] fft_with_hann(double[] input, int offset) {
+    double[] fftWithHann(double[] input, int offset) {
         for (int i = 0; i < scratch.length; i++) scratch[i] = hann[i] * input[i+offset];
         Complex[] tmp = fft.transformRealOptimisedForward(scratch);
         for (int i = 0; i < tmp.length; i++) scratch[i] = tmp[i].abs();
         return scratch;
     }
 
-    int[] freq_offsets = {
+    int[] freqOffsets = {
             19500,
             19700,
             19900,
@@ -102,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
             20500
     };
 
-    double[] template = new double[2*searchwindow + 1];
+    double[] template = new double[2* SEARCH_WINDOW + 1];
 
     // FIXME: needs to be dynamic for each frequency
     double freq_threshold = 100.0;
@@ -111,22 +111,22 @@ public class MainActivity extends AppCompatActivity {
     // TODO: Do we need this?!?
     private int detect_freq(double[] data) {
         // first run -> convert frequencies to FFT bins
-        if (freq_offsets[0] > 10000)
-            for (int i = 0; i < freq_offsets.length; i++) {
-                freq_offsets[i] = ComputeIndex(freq_offsets[i]);
-                Log.d(TAG,"mapping index "+freq_offsets[i]);
+        if (freqOffsets[0] > 10000)
+            for (int i = 0; i < freqOffsets.length; i++) {
+                freqOffsets[i] = ComputeIndex(freqOffsets[i]);
+                Log.d(TAG,"mapping index " + freqOffsets[i]);
             }
 
         // find local maximum around expected base frequency
         //int basefreq = freq_offsets[nextfreq];
         double maxval = 0.0;
         int basefreq = 0;
-        for (int i = 0; i < freq_offsets.length; i++) { // = basefreq-searchwindow; i < basefreq+searchwindow; i++) {
-            int index = freq_offsets[i];
+        for (int i = 0; i < freqOffsets.length; i++) { // = basefreq-searchwindow; i < basefreq+searchwindow; i++) {
+            int index = freqOffsets[i];
             if (data[index] > maxval) {
                 maxval = data[index];
                 basefreq = index;
-                nextfreq = i;
+                nextFreq = i;
             }
         }
         //basefreq = maxfreq;
@@ -136,10 +136,10 @@ public class MainActivity extends AppCompatActivity {
 
         StringBuilder msg = new StringBuilder("values: ");
 
-        for (int i = 0; i <= 2 * searchwindow; i++) {
-            template[i] = 0.9 * template[i] + 0.1 * (data[basefreq-searchwindow+i] / maxval);
-            msg.append((int) (100 * data[basefreq - searchwindow + i] / maxval)).append(",");
-            data[basefreq - searchwindow + i] -= maxval * template[i];
+        for (int i = 0; i <= 2 * SEARCH_WINDOW; i++) {
+            template[i] = 0.9 * template[i] + 0.1 * (data[basefreq- SEARCH_WINDOW +i] / maxval);
+            msg.append((int) (100 * data[basefreq - SEARCH_WINDOW + i] / maxval)).append(",");
+            data[basefreq - SEARCH_WINDOW + i] -= maxval * template[i];
         }
         Log.d(TAG, msg.toString());
         msg = new StringBuilder("template: ");
@@ -148,7 +148,7 @@ public class MainActivity extends AppCompatActivity {
 
         // find weight distribution of peak
         double balance = 0.0;
-        for (int i = 5; i <= searchwindow; i++)
+        for (int i = 5; i <= SEARCH_WINDOW; i++)
             balance += (data[basefreq+i] - data[basefreq-i]);
 
         Log.v(TAG,"basefreq = "+basefreq+" balance = "+balance);
@@ -202,16 +202,17 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG,"minBufferSize = " + bufferSize);
         audioRecord = new AudioRecord(MediaRecorder.AudioSource.UNPROCESSED, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize*4 );
 
-        rawbuffer = new short[fftwindowsize];
-        input = new double[fftwindowsize];
-        prev = new double[fftwindowsize];
-        hann = hann_window(fftwindowsize);
-        scratch = new double[fftwindowsize];
+        rawBuffer = new short[FFT_WINDOW_SIZE];
+        input = new double[FFT_WINDOW_SIZE];
+        prev = new double[FFT_WINDOW_SIZE];
+        hann = hannWindow(FFT_WINDOW_SIZE);
+        scratch = new double[FFT_WINDOW_SIZE];
 
-        masterbuf = new double[SAMPLE_RATE]; // room for one second of data
+        masterBuf = new double[SAMPLE_RATE]; // room for one second of data
 
         FloatingActionButton fab = findViewById(R.id.fab);
         final TextView textView = findViewById(R.id.statusText);
+        final ConstraintLayout spectrogram = findViewById(R.id.spectrogram);
 
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -221,16 +222,18 @@ public class MainActivity extends AppCompatActivity {
                     doRecord = false;
                     ra = (RecordAudioTask) new RecordAudioTask().execute();
                     ((FloatingActionButton)view).setImageResource(android.R.drawable.ic_media_play);
-                    String status = "Recording sopped!\n\nYou will no longer receive notifications!";
+                    String status = "Recording sopped!\nYou will no longer receive notifications!";
                     textView.setText(status);
+                    spectrogram.setVisibility(View.INVISIBLE);
                 }
                 else {
                     stopped = false;
                     doRecord = true;
                     ra = (RecordAudioTask) new RecordAudioTask().execute();
                     ((FloatingActionButton)view).setImageResource(android.R.drawable.ic_media_pause);
-                    String status = "Recording started...\n\nYou can close the app now!";
+                    String status = "Recording started...\nYou can close the app now!";
                     // TODO: Ja bi ode možda crta te spektograme ako su baza, da nije prazan ekran.
+                    // npr:
                     textView.setText(status);
                 }
             }
@@ -270,9 +273,12 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     audioRecord.startRecording();
                     Log.d(TAG,"start recording");
+
+                    final ConstraintLayout spectrogram = findViewById(R.id.spectrogram);
+
                     doRecord = true;
 
-                    byte[] raw_buffer = new byte[fftwindowsize];
+                    byte[] raw_buffer = new byte[FFT_WINDOW_SIZE];
 
                     String filename = getTempFileName("_0");
                     String filename_han = getTempFileName("_1");
@@ -292,8 +298,8 @@ public class MainActivity extends AppCompatActivity {
 
                         // FIXME: ugly hack, when exactly should playback happen?
                         if (count++ % 3 == 0) {
-                            nextfreq = (int)(Math.random()*pings.length);
-                            soundPool.play(pings[nextfreq],1.0f,1.0f,0,0,1.0f );
+                            nextFreq = (int)(Math.random()*pings.length);
+                            soundPool.play(pings[nextFreq],1.0f,1.0f,0,0,1.0f );
                         }
 
                         // Copy data from buffer to output stream (== temp file)
@@ -304,15 +310,15 @@ public class MainActivity extends AppCompatActivity {
                         }
 
                         long time1 = System.currentTimeMillis();
-                        double[] tmpb = prev;
+                        double[] tmpBuff = prev;
                         prev = input;
-                        input = tmpb;
+                        input = tmpBuff;
 
                         // FIXME: magic scale factor 100.0
                         for (int i = 0; i < input.length; i++)
                             input[i] = 100.0 * (raw_buffer[i] / (double)Short.MAX_VALUE);
 
-                        double[] output = fft_with_hann(input,0);
+                        double[] output = fftWithHann(input,0);
 
                         // added - converting doubles to bytes
                         // ! this wav files will be 8 times larger, since it is using doubles
@@ -328,17 +334,21 @@ public class MainActivity extends AppCompatActivity {
 
                         long time2 = System.currentTimeMillis();
 
-                        Log.v(TAG,"timediff = ms: "+(time2-time1));
+                        Log.v(TAG,"time diff = ms: "+(time2-time1));
                     }
 
                     saveFiles();
 
                     // TODO: Classification goes here!
+
+
                     runOnUiThread(new Runnable()
                     {
                         public void run()
                         {
-                            final TextView textView = findViewById(R.id.statusText);
+
+                            if (doRecord)
+                                spectrogram.setVisibility(View.VISIBLE);
 
                             double rand = Math.random();
                             if (rand > 0.95) {
@@ -356,6 +366,7 @@ public class MainActivity extends AppCompatActivity {
 
                                 // This is important for Android versions Oreo and older.
                                 // Not sure if it has to be in the onCreate() function.
+                                // Assuming we do not need that at all.
                                 /*
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                     NotificationChannel channel = new NotificationChannel("My Notification", "My Notificiation", NotificationManager.IMPORTANCE_HIGH);
@@ -373,16 +384,10 @@ public class MainActivity extends AppCompatActivity {
                                 textView.setTextColor(Color.GREEN);
 
                                 */
-
                             }
-
                         }
                     });
                     // TODO: End of Classification
-
-
-
-                    // TODO: deleteFiles();
 
                     // Closing the output stream
                     os.close();
@@ -459,7 +464,6 @@ public class MainActivity extends AppCompatActivity {
         int bufferSize = AudioRecord.getMinBufferSize( SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT );
 
         long totalAudioLen, totalDataLen;
-        long longSampleRate = SAMPLE_RATE;
         int channels = 2;
         long byteRate = (long) RECORDER_BPP * SAMPLE_RATE * channels / 8;
 
@@ -473,7 +477,7 @@ public class MainActivity extends AppCompatActivity {
 
             Log.v(TAG, "File size: " + totalDataLen);
 
-            WriteWaveFileHeader(out, totalAudioLen, totalDataLen, longSampleRate, channels, byteRate);
+            WriteWaveFileHeader(out, totalAudioLen, totalDataLen, SAMPLE_RATE, channels, byteRate);
 
             while(in.read(data) != -1) {
                 out.write(data);
