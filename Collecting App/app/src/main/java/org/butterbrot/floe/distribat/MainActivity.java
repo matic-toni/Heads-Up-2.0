@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String AUDIO_RECORDER_EXT_FILE = ".wav";
     private static final String AUDIO_RECORDER_TEMP_FILE = "record_temp";
     private static final String AUDIO_RECORDER_TEMP_FILE_EXT = ".raw";
-    private static final int RECORDER_BPP = 4;
+    private static final int RECORDER_BPP = 16;
 
     // Are recorded sounds positive or negative samples?
     private static String isPositive;
@@ -593,7 +593,7 @@ public class MainActivity extends AppCompatActivity {
         header[29] = (byte) ((byteRate >> 8) & 0xff);
         header[30] = (byte) ((byteRate >> 16) & 0xff);
         header[31] = (byte) ((byteRate >> 24) & 0xff);
-        header[32] = (byte) (2 * 16 / 8);  // block align
+        header[32] = (byte) (16 / 8);  // block align
         header[33] = 0;
         header[34] = RECORDER_BPP;  // bits per sample
         header[35] = 0;
