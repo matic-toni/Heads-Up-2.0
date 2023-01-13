@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String AUDIO_RECORDER_EXT_FILE = ".wav";
     private static final String AUDIO_RECORDER_TEMP_FILE = "record_temp";
     private static final String AUDIO_RECORDER_TEMP_FILE_EXT = ".raw";
-    private static final int RECORDER_BPP = 16;
+    private static final int RECORDER_BPP = 4;
 
     // Are recorded sounds positive or negative samples?
     private static String isPositive;
