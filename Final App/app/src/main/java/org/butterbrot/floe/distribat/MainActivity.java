@@ -22,6 +22,8 @@ import android.view.Menu;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import uk.me.berndporr.kiss_fft.KISSFastFourierTransformer;
 import org.apache.commons.math3.complex.Complex;
 

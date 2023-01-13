@@ -35,6 +35,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -277,13 +278,13 @@ public class MainActivity extends AppCompatActivity {
 
         @Override protected Void doInBackground(Void... params) {
             while (currentSample < samplesNumber) {
+                rawbuffer = new short[fftwindowsize];
                 try {
                     audioRecord.startRecording();
                     Log.d(TAG,"start recording");
                     doRecord = true;
 
                     // added
-                    byte[] raw_buffer = new byte[fftwindowsize];
                     String filename = getTempFileName(currentSample);
                     String filename_han = getTempFileName(currentSample + samplesNumber);
                     FileOutputStream os = null;
@@ -320,31 +321,42 @@ public class MainActivity extends AppCompatActivity {
 
                         // Copy data from buffer to output stream (== temp file)
                         if (os != null) {
-                            int read = audioRecord.read(raw_buffer, 0, raw_buffer.length, AudioRecord.READ_BLOCKING); // ???
+                            int read = audioRecord.read(rawbuffer, 0, rawbuffer.length, AudioRecord.READ_BLOCKING); // ???
+                            Log.v("Raw Buffer", Arrays.toString(rawbuffer));
+
+                            ByteBuffer rawbufferbyte = ByteBuffer.allocate(fftwindowsize*2);
+                            for (short s : rawbuffer) {
+                                rawbufferbyte.putShort(s);
+                            }
+                            Log.v("Raw Buffer Bytes", Arrays.toString(rawbufferbyte.array()));
 
                             if (read != AudioRecord.ERROR_INVALID_OPERATION) {
                                 try {
-                                    os.write(raw_buffer);
+                                    os.write(rawbufferbyte.array());
                                 } catch (IOException e) {
                                     e.printStackTrace();
                                 }
+                            } else {
+                                Log.v("Error", "Error");
                             }
                         }
 
                         long time1 = System.currentTimeMillis();
                         double[] tmpb = prev; prev = input; input = tmpb;
                         // FIXME: magic scale factor 100.0
-                        for (int i = 0; i < input.length; i++) input[i] = 100.0 * (raw_buffer[i] / (double)Short.MAX_VALUE);
+                        for (int i = 0; i < input.length; i++)
+                            input[i] = 100.0 * (rawbuffer[i] / (double)Short.MAX_VALUE);
                         double[] output = fft_with_hann(input,0);
 
                         // TODO: Save the output!
 
+
                         // added - converting doubles to bytes
                         // ! this wav files will be 8 times larger, since it is using doubles
                         // instead of bytes
-                        ByteBuffer bb = ByteBuffer.allocate(output.length * 8);
+                        ByteBuffer bb = ByteBuffer.allocate(output.length * 4);
                         for(double o : output) {
-                            bb.putDouble(o);
+                            bb.putFloat((float) o);
                         }
 
                         byte[] output_bytes = bb.array();
@@ -518,7 +530,7 @@ public class MainActivity extends AppCompatActivity {
 
         long totalAudioLen, totalDataLen;
         long longSampleRate = SAMPLE_RATE;
-        int channels = 2;
+        int channels = 1;
         long byteRate = (long) RECORDER_BPP * SAMPLE_RATE * channels / 8;
 
         byte[] data = new byte[bufferSize];
