@@ -541,7 +541,7 @@ public class MainActivity extends AppCompatActivity {
             totalAudioLen = in.getChannel().size();
             totalDataLen = totalAudioLen + 36;
 
-            Log.v(TAG, "File size: " + totalDataLen);
+            Log.v(TAG, "File name: " + outFilename + " File size: " + totalDataLen);
 
             WriteWaveFileHeader(out, totalAudioLen, totalDataLen, longSampleRate, channels, byteRate);
 
