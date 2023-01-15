@@ -370,6 +370,8 @@ public class MainActivity extends AppCompatActivity {
                             }
                         }
 
+                        Log.v("final size", String.valueOf(output_bytes.length) + " " + output.length);
+
                         long time2 = System.currentTimeMillis();
 
                         Log.v(TAG,"timediff = ms: "+(time2-time1));
@@ -434,7 +436,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
         builder.show();
-
     }
 
     private void saveFiles() {
@@ -543,7 +544,7 @@ public class MainActivity extends AppCompatActivity {
 
             Log.v(TAG, "File name: " + outFilename + " File size: " + totalDataLen);
 
-            WriteWaveFileHeader(out, totalAudioLen, totalDataLen, longSampleRate, channels, byteRate);
+            byte[] header_in = WriteWaveFileHeader(out, totalAudioLen, totalDataLen, longSampleRate, channels, byteRate);
 
             while(in.read(data) != -1) {
                 out.write(data);
@@ -558,7 +559,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // Writes wave header at the start of the new wave file
-    private void WriteWaveFileHeader(FileOutputStream out, long totalAudioLen, long totalDataLen, long longSampleRate, int channels, long byteRate) throws IOException {
+    private byte[] WriteWaveFileHeader(FileOutputStream out, long totalAudioLen, long totalDataLen, long longSampleRate, int channels, long byteRate) throws IOException {
         byte[] header = new byte[44];
 
         header[0] = 'R';  // RIFF/WAVE header
@@ -607,5 +608,7 @@ public class MainActivity extends AppCompatActivity {
         header[43] = (byte) ((totalAudioLen >> 24) & 0xff);
 
         out.write(header, 0, 44);
+
+        return header;
     }
 }

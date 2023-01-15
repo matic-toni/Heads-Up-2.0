@@ -22,9 +22,18 @@ import android.view.Menu;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import uk.me.berndporr.kiss_fft.KISSFastFourierTransformer;
+
 import org.apache.commons.math3.complex.Complex;
 
 import java.io.File;
@@ -75,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
     boolean doRecord = false;
 
     private int ComputeIndex(int frequency) {
-        return (int)((((double) FFT_WINDOW_SIZE) / ((double)SAMPLE_RATE)) * (double)frequency);
+        return (int) ((((double) FFT_WINDOW_SIZE) / ((double) SAMPLE_RATE)) * (double) frequency);
     }
 
     // Hann window is generally considered the best all-purpose window function, see also ...
@@ -83,13 +92,13 @@ public class MainActivity extends AppCompatActivity {
     private double[] hannWindow(int size) {
         double[] hann = new double[size];
         for (int i = 0; i < size; i++) {
-            hann[i] = 0.5 * (1.0 - Math.cos(2.0*i*Math.PI/(double)(size-1)));
+            hann[i] = 0.5 * (1.0 - Math.cos(2.0 * i * Math.PI / (double) (size - 1)));
         }
         return hann;
     }
 
     double[] fftWithHann(double[] input, int offset) {
-        for (int i = 0; i < scratch.length; i++) scratch[i] = hann[i] * input[i+offset];
+        for (int i = 0; i < scratch.length; i++) scratch[i] = hann[i] * input[i + offset];
         Complex[] tmp = fft.transformRealOptimisedForward(scratch);
         for (int i = 0; i < tmp.length; i++) scratch[i] = tmp[i].abs();
         return scratch;
@@ -104,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
             20500
     };
 
-    double[] template = new double[2* SEARCH_WINDOW + 1];
+    double[] template = new double[2 * SEARCH_WINDOW + 1];
 
     // FIXME: needs to be dynamic for each frequency
     double freq_threshold = 100.0;
@@ -116,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
         if (freqOffsets[0] > 10000)
             for (int i = 0; i < freqOffsets.length; i++) {
                 freqOffsets[i] = ComputeIndex(freqOffsets[i]);
-                Log.d(TAG,"mapping index " + freqOffsets[i]);
+                Log.d(TAG, "mapping index " + freqOffsets[i]);
             }
 
         // find local maximum around expected base frequency
@@ -139,22 +148,22 @@ public class MainActivity extends AppCompatActivity {
         StringBuilder msg = new StringBuilder("values: ");
 
         for (int i = 0; i <= 2 * SEARCH_WINDOW; i++) {
-            template[i] = 0.9 * template[i] + 0.1 * (data[basefreq- SEARCH_WINDOW +i] / maxval);
+            template[i] = 0.9 * template[i] + 0.1 * (data[basefreq - SEARCH_WINDOW + i] / maxval);
             msg.append((int) (100 * data[basefreq - SEARCH_WINDOW + i] / maxval)).append(",");
             data[basefreq - SEARCH_WINDOW + i] -= maxval * template[i];
         }
         Log.d(TAG, msg.toString());
         msg = new StringBuilder("template: ");
-        for (double t: template) msg.append((int) (t * 100)).append(",");
+        for (double t : template) msg.append((int) (t * 100)).append(",");
         Log.d(TAG, msg.toString());
 
         // find weight distribution of peak
         double balance = 0.0;
         for (int i = 5; i <= SEARCH_WINDOW; i++)
-            balance += (data[basefreq+i] - data[basefreq-i]);
+            balance += (data[basefreq + i] - data[basefreq - i]);
 
-        Log.v(TAG,"basefreq = "+basefreq+" balance = "+balance);
-        return (int)Math.round(balance);
+        Log.v(TAG, "basefreq = " + basefreq + " balance = " + balance);
+        return (int) Math.round(balance);
     }
 
     // Requesting permission to RECORD_AUDIO (from https://developer.android.com/guide/topics/media/mediarecorder#java)
@@ -170,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == REQUEST) {
             permissionToRecordAccepted = (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED);
         }
-        if (!permissionToRecordAccepted ) {
+        if (!permissionToRecordAccepted) {
             Toast.makeText(this, "The app has no permissions", Toast.LENGTH_LONG).show();
             finish();
         }
@@ -189,20 +198,30 @@ public class MainActivity extends AppCompatActivity {
         // TODO: setAudioAttributes()?
         soundPool = new SoundPool.Builder().build();
         pings = new int[6];
-        pings[0] = soundPool.load(this,R.raw.sine19500,0);
-        pings[1] = soundPool.load(this,R.raw.sine19700,0);
-        pings[2] = soundPool.load(this,R.raw.sine19900,0);
-        pings[3] = soundPool.load(this,R.raw.sine20100,0);
-        pings[4] = soundPool.load(this,R.raw.sine20300,0);
-        pings[5] = soundPool.load(this,R.raw.sine20500,0);
+        pings[0] = soundPool.load(this, R.raw.sine19500, 0);
+        pings[1] = soundPool.load(this, R.raw.sine19700, 0);
+        pings[2] = soundPool.load(this, R.raw.sine19900, 0);
+        pings[3] = soundPool.load(this, R.raw.sine20100, 0);
+        pings[4] = soundPool.load(this, R.raw.sine20300, 0);
+        pings[5] = soundPool.load(this, R.raw.sine20500, 0);
 
         // TODO these sounds don't have ramp-up/ramp-down yet
 
         fft = new KISSFastFourierTransformer();
 
-        int bufferSize = AudioRecord.getMinBufferSize( SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        Log.d(TAG,"minBufferSize = " + bufferSize);
-        audioRecord = new AudioRecord(MediaRecorder.AudioSource.UNPROCESSED, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize*4 );
+        int bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        Log.d(TAG, "minBufferSize = " + bufferSize);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        audioRecord = new AudioRecord(MediaRecorder.AudioSource.UNPROCESSED, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize * 4);
 
         rawBuffer = new short[FFT_WINDOW_SIZE];
         input = new double[FFT_WINDOW_SIZE];
