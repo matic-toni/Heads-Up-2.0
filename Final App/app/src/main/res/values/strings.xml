@@ -4,5 +4,6 @@
     <string name="click_play_to_start_recording">Click Play Button to Start Recording!</string>
     <string name="play_or_pause_recording">Play or pause recording</string>
     <string name="shows_spectrogram">Shows spectrogram</string>
+    <string name="recording_started">"Recording Started, You Can Close the App now!"</string>
     <string name="logo">Logo</string>
 </resources>

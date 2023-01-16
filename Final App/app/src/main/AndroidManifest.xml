@@ -3,32 +3,24 @@
     package="org.butterbrot.floe.distribat">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:allowBackup="true"
         android:icon="@drawable/app_logo"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/app_logo"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".SplashActivity"
-            android:exported="true"
-            android:theme="@style/AppTheme.NoActionBar">
-            <meta-data
-                android:name="android.app.lib_name"
-                android:value="" />
+            android:name=".MainActivity"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:exported="true">
             <intent-filter>
-                <category android:name="android.intent.category.LAUNCHER" />
                 <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".MainActivity"
-            android:theme="@style/AppTheme.NoActionBar">
-        </activity>
     </application>
-
 </manifest>

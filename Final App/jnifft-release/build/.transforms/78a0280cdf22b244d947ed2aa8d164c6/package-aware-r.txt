@@ -1,2 +1,0 @@
-uk.me.berndporr.kiss_fft
-string app_name
